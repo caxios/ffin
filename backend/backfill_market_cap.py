@@ -35,7 +35,9 @@ def backfill_db(db_path):
     print(f"Finished backfilling {updated_count} tickers in {db_path}.\n")
 
 if __name__ == "__main__":
-    for db in ["insider_all.db", "insider_watchlist.db"]:
-        if os.path.exists(db):
-            print(f"Processing {db}...")
-            backfill_db(db)
+    db_dir = os.path.join(os.path.dirname(__file__), "db")
+    for db_name in ["insider_all.db", "insider_watchlist.db"]:
+        db_path = os.path.join(db_dir, db_name)
+        if os.path.exists(db_path):
+            print(f"Processing {db_path}...")
+            backfill_db(db_path)

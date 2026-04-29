@@ -29,11 +29,11 @@ from tavily_transcripts import fetch_transcript
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DB_PATHS = {
-    "watchlist": os.path.join(BASE_DIR, "insider_watchlist.db"),
-    "all":       os.path.join(BASE_DIR, "insider_all.db"),
+    "watchlist": os.path.join(BASE_DIR, "db", "insider_watchlist.db"),
+    "all":       os.path.join(BASE_DIR, "db", "insider_all.db"),
 }
 
-TRANSCRIPTS_DB = os.path.join(BASE_DIR, "earnings_transcripts.db")
+TRANSCRIPTS_DB = os.path.join(BASE_DIR, "db", "earnings_transcripts.db")
 
 # ---------------------------------------------------------------------------
 # App

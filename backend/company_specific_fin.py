@@ -37,8 +37,9 @@ def get_company_facts(ticker):
     return facts_data
 
 if __name__ == "__main__":
+    import os
     ticker_to_search = "AAPL"
     facts = get_company_facts(ticker_to_search)
     if facts:
-        save_company_facts(facts, "company_facts.db", ticker=ticker_to_search)
+        save_company_facts(facts, os.path.join(os.path.dirname(__file__), "db", "company_facts.db"), ticker=ticker_to_search)
 

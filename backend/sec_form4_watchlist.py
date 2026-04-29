@@ -102,6 +102,7 @@ def parse_all_from_watchlist(delay=REQUEST_DELAY, count=FILINGS_PER_COMPANY):
 
 if __name__ == "__main__":
     from form4_db import save_to_db
+    import os
 
     results = parse_all_from_watchlist()
 
@@ -109,5 +110,5 @@ if __name__ == "__main__":
     all_parsed = [filing for filings in results.values() for filing in filings]
 
     print(f"\nParsed {len(all_parsed)} filings across {len(results)} tickers.")
-    save_to_db(all_parsed, "insider_watchlist.db")
+    save_to_db(all_parsed, os.path.join(os.path.dirname(__file__), "db", "insider_watchlist.db"))
 

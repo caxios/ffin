@@ -8,6 +8,12 @@ import os
 import re
 from urllib.parse import urlparse
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+except ImportError:
+    pass
+
 from tavily import TavilyClient
 
 from earnings_transcripts_db import find_cached, save_transcript
@@ -61,7 +67,7 @@ def fetch_transcript(
     ticker: str,
     fiscal_year: int,
     fiscal_quarter: int,
-    db_path: str = "earnings_transcripts.db",
+    db_path: str = os.path.join(os.path.dirname(__file__), "db", "earnings_transcripts.db"),
     force_refresh: bool = False,
 ) -> dict | None:
     """

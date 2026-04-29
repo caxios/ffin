@@ -215,8 +215,9 @@ def parse_all_from_rss(delay: float = 0.2) -> list:
 
 if __name__ == "__main__":
     from form4_db import save_to_db
+    import os
 
     parsed_list = parse_all_from_rss()
     print(f"\nParsed {len(parsed_list)} filings.")
-    save_to_db(parsed_list, "insider_all.db")
+    save_to_db(parsed_list, os.path.join(os.path.dirname(__file__), "db", "insider_all.db"))
 
