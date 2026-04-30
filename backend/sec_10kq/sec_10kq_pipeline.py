@@ -52,8 +52,8 @@ DEFAULT_COUNT = 5
 # SEC rate limit delay between filings (seconds)
 FILING_DELAY = 0.3
 
-# Database path
-DB_DIR = os.path.join(os.path.dirname(__file__), "db")
+# Database path (pointing to backend/db/)
+DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db")
 DB_PATH = os.path.join(DB_DIR, "sec_10kq.db")
 
 

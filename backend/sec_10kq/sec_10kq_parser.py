@@ -345,6 +345,95 @@ def extract_sections_secparser(html: str, form_type: str) -> dict:
 
 
 # ============================================================
+# Unified Extraction Entry Point
+# ============================================================
+
+def extract_filing_sections(html: str, form_type: str) -> dict:
+    """
+    Extract target sections from a 10-K or 10-Q HTML filing.
+    Uses sec-parser as primary strategy, with TOC fallback.
+
+    Args:
+        html:      Raw HTML string.
+        form_type: "10-K" or "10-Q".
+
+    Returns:
+        Dict of section_key -> extracted text (str or dict for notes).
+        Missing sections are None.
+    """
+    # Expected keys depend on form type
+    if form_type == "10-K":
+        expected_keys = {"business", "risk_factors", "mda", "financial_notes"}
+    else:
+        expected_keys = {"risk_factors", "mda", "financial_notes"}
+
+    # --- Primary: sec-parser ---
+    sections = extract_sections_secparser(html, form_type)
+
+    # --- Fallback: fill in any missing sections via TOC ---
+    missing = [k for k in expected_keys if k not in sections or sections.get(k) is None]
+    # Don't try TOC fallback for financial_notes (they need structured parsing)
+    missing_for_toc = [k for k in missing if k != "financial_notes"]
+
+    if missing_for_toc:
+        logger.info(f"sec-parser missed {len(missing_for_toc)} section(s), trying TOC fallback: {missing_for_toc}")
+        fallback = extract_sections_toc_fallback(html, form_type)
+        for k in missing_for_toc:
+            if k in fallback and fallback[k]:
+                sections[k] = fallback[k]
+
+    # Ensure all expected keys exist
+    for k in expected_keys:
+        sections.setdefault(k, None)
+
+    return sections
+
+
+# ============================================================
+# Full single-filing pipeline
+# ============================================================
+
+def parse_single_filing(filing_meta: dict) -> dict:
+    """
+    Given a filing metadata dict (from sec_10kq_rss),
+    download, parse, and return the structured result.
+
+    Args:
+        filing_meta: Dict with keys:
+            cik, form_type, filing_date, document_url, accession_number, title
+
+    Returns:
+        Dict with all metadata + extracted sections.
+    """
+    doc_url = filing_meta.get("document_url")
+    form_type = filing_meta.get("form_type", "10-K")
+
+    if not doc_url:
+        logger.warning(f"No document URL for filing {filing_meta.get('accession_number')}")
+        return {**filing_meta, "sections": None, "parse_method": None}
+
+    print(f"    Downloading {form_type}: {doc_url}")
+    html = fetch_document_html(doc_url)
+
+    if not html:
+        return {**filing_meta, "sections": None, "parse_method": "download_failed"}
+
+    print(f"    Parsing sections ({len(html):,} chars)...")
+    sections = extract_filing_sections(html, form_type)
+
+    # Determine which method(s) succeeded
+    found = [k for k, v in sections.items() if v is not None]
+    print(f"    Extracted: {found}")
+
+    return {
+        **filing_meta,
+        "sections": sections,
+        "parse_method": "sec-parser+toc_fallback",
+    }
+
+
+
+# ============================================================
 # TOC Anchor-Tracing Fallback
 # ============================================================
 
@@ -455,93 +544,6 @@ def extract_sections_toc_fallback(html: str, form_type: str) -> dict:
 
     return sections
 
-
-# ============================================================
-# Unified Extraction Entry Point
-# ============================================================
-
-def extract_filing_sections(html: str, form_type: str) -> dict:
-    """
-    Extract target sections from a 10-K or 10-Q HTML filing.
-    Uses sec-parser as primary strategy, with TOC fallback.
-
-    Args:
-        html:      Raw HTML string.
-        form_type: "10-K" or "10-Q".
-
-    Returns:
-        Dict of section_key -> extracted text (str or dict for notes).
-        Missing sections are None.
-    """
-    # Expected keys depend on form type
-    if form_type == "10-K":
-        expected_keys = {"business", "risk_factors", "mda", "financial_notes"}
-    else:
-        expected_keys = {"risk_factors", "mda", "financial_notes"}
-
-    # --- Primary: sec-parser ---
-    sections = extract_sections_secparser(html, form_type)
-
-    # --- Fallback: fill in any missing sections via TOC ---
-    missing = [k for k in expected_keys if k not in sections or sections.get(k) is None]
-    # Don't try TOC fallback for financial_notes (they need structured parsing)
-    missing_for_toc = [k for k in missing if k != "financial_notes"]
-
-    if missing_for_toc:
-        logger.info(f"sec-parser missed {len(missing_for_toc)} section(s), trying TOC fallback: {missing_for_toc}")
-        fallback = extract_sections_toc_fallback(html, form_type)
-        for k in missing_for_toc:
-            if k in fallback and fallback[k]:
-                sections[k] = fallback[k]
-
-    # Ensure all expected keys exist
-    for k in expected_keys:
-        sections.setdefault(k, None)
-
-    return sections
-
-
-# ============================================================
-# Full single-filing pipeline
-# ============================================================
-
-def parse_single_filing(filing_meta: dict) -> dict:
-    """
-    Given a filing metadata dict (from sec_10kq_rss),
-    download, parse, and return the structured result.
-
-    Args:
-        filing_meta: Dict with keys:
-            cik, form_type, filing_date, document_url, accession_number, title
-
-    Returns:
-        Dict with all metadata + extracted sections.
-    """
-    doc_url = filing_meta.get("document_url")
-    form_type = filing_meta.get("form_type", "10-K")
-
-    if not doc_url:
-        logger.warning(f"No document URL for filing {filing_meta.get('accession_number')}")
-        return {**filing_meta, "sections": None, "parse_method": None}
-
-    print(f"    Downloading {form_type}: {doc_url}")
-    html = fetch_document_html(doc_url)
-
-    if not html:
-        return {**filing_meta, "sections": None, "parse_method": "download_failed"}
-
-    print(f"    Parsing sections ({len(html):,} chars)...")
-    sections = extract_filing_sections(html, form_type)
-
-    # Determine which method(s) succeeded
-    found = [k for k, v in sections.items() if v is not None]
-    print(f"    Extracted: {found}")
-
-    return {
-        **filing_meta,
-        "sections": sections,
-        "parse_method": "sec-parser+toc_fallback",
-    }
 
 
 # ============================================================
