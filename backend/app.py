@@ -11,15 +11,18 @@ Run:
 
 import os
 import sqlite3
+import uuid
 from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from form4.sec_form4_watchlist import parse_all_from_watchlist, WATCHLIST
 from form4.form4_parser import parse_all_from_rss
 from form4.form4_db import save_to_db
 from earnings.tavily_transcripts import fetch_transcript
+from agents.conversational_cio import chat as cio_chat, reset_session as cio_reset
 
 
 # ---------------------------------------------------------------------------
@@ -275,5 +278,49 @@ def get_transcript(
     if not row:
         raise HTTPException(status_code=404, detail="No transcript found")
     return row
+
+
+# ---------------------------------------------------------------------------
+# POST /chat — conversational CIO ReAct agent
+# ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    user_message: str = Field(..., min_length=1, description="The user's chat message.")
+    session_id: Optional[str] = Field(
+        None,
+        description="Conversation thread id. If omitted, a new one is generated and returned.",
+    )
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    reply: str
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat_with_cio(req: ChatRequest):
+    """
+    Talk to the conversational Chief Investment Officer agent.
+
+    The CIO has tools to query the insider-trades SQLite DB and to consult the
+    Financial / Risk / Sentiment subordinate analysts. Conversation memory is
+    keyed by `session_id`; reuse the same id across turns to continue a thread.
+    """
+    session_id = req.session_id or uuid.uuid4().hex
+    try:
+        reply = cio_chat(req.user_message, session_id=session_id)
+    except RuntimeError as e:
+        # Surfaces missing GOOGLE_API_KEY etc. as 500.
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CIO agent error: {e!r}")
+    return ChatResponse(session_id=session_id, reply=reply)
+
+
+@app.post("/chat/reset")
+def chat_reset(session_id: str = Query(..., description="Session id to clear")):
+    """Drop the memory buffer for a single conversation thread."""
+    cio_reset(session_id)
+    return {"status": "ok", "session_id": session_id}
 
 

@@ -97,9 +97,13 @@ def main() -> int:
         print(f"[3/3] --no-save set; skipping persistence.", file=sys.stderr, flush=True)
 
     # ── stdout: the structured memo + Markdown ──
-    print(json.dumps(memo_dict, indent=2, default=str))
+    # Remove the massive markdown string from the JSON print so it doesn't duplicate
+    display_dict = memo_dict.copy()
+    markdown_text = display_dict.pop("memo_markdown", "")
+    
+    print(json.dumps(display_dict, indent=2, default=str))
     print("\n" + "=" * 80)
-    print(memo_dict.get("memo_markdown", ""))
+    print(markdown_text)
     print("=" * 80)
 
     return 0

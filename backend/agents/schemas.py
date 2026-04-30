@@ -83,14 +83,46 @@ class BusinessReport(BaseModel):
     )
 
 
-# ── Sentiment Analysis Agent ──────────────────────────────────────────
+# ── Sentiment & Conviction Analysis Agent ─────────────────────────────
 class NotableQuote(BaseModel):
     speaker: str = Field(..., description="Name or role of the speaker (e.g., 'CEO Tim Cook').")
     quote: str = Field(..., description="Direct quote from the transcript.")
     interpretation: str = Field(..., description="Why this quote matters — confident, defensive, evasive, etc.")
 
 
+class NotableInsiderTrade(BaseModel):
+    owner_name: str = Field(..., description="Name of the insider (e.g., 'Tim Cook').")
+    officer_title: str | None = Field(
+        None,
+        description="Officer title or role (e.g., 'CEO', 'CFO', 'Director'). Empty if not an officer.",
+    )
+    transaction_date: str = Field(..., description="ISO transaction date.")
+    transaction_code: str = Field(
+        ...,
+        description="SEC Form 4 transaction code (P=purchase, S=sale, F=tax-withholding, M=option exercise, A=award, D=disposition to issuer, etc.).",
+    )
+    acquired_or_disposed: Literal["A", "D", ""] = Field(
+        ...,
+        description="A=acquired, D=disposed.",
+    )
+    amount: float = Field(..., description="Number of shares in the transaction.")
+    trade_ratio_pct: float | None = Field(
+        None,
+        description="Percentage of the insider's holdings transacted (key conviction signal).",
+    )
+    transaction_value: float | None = Field(None, description="USD dollar value of the transaction.")
+    is_routine_tax_withholding: bool = Field(
+        ...,
+        description="True if the trade is routine tax-withholding (typically transaction_code='F') and should NOT be read as conviction signal.",
+    )
+    interpretation: str = Field(
+        ...,
+        description="What this trade signals — conviction buy, conviction sell, routine withholding, option exercise, etc.",
+    )
+
+
 class SentimentReport(BaseModel):
+    # ── Transcript-based signals ──
     overall_tone: Literal["bullish", "cautiously_optimistic", "neutral", "cautious", "bearish"]
     forward_guidance_confidence: str = Field(
         ...,
@@ -105,11 +137,49 @@ class SentimentReport(BaseModel):
         ...,
         ge=-1.0,
         le=1.0,
-        description="Overall sentiment in [-1, 1] where -1 is strongly bearish, +1 is strongly bullish.",
+        description="Transcript-only sentiment in [-1, 1] where -1 is strongly bearish, +1 is strongly bullish.",
     )
+
+    # ── Insider-trading signals (Form 4) ──
+    insider_activity_summary: str = Field(
+        ...,
+        description="Plain-English summary of insider trading activity over the period: net buying vs selling, who participated, dollar magnitude. Explicitly call out routine tax-withholding trades you EXCLUDED from conviction analysis.",
+    )
+    notable_insider_trades: list[NotableInsiderTrade] = Field(
+        default_factory=list,
+        description="3-10 most material insider trades, with conviction interpretation.",
+    )
+
+    # ── Cross-reference: tone vs. insider conviction ──
+    conviction_signal: Literal[
+        "strong_positive_alignment",
+        "positive_alignment",
+        "neutral",
+        "minor_contradiction",
+        "major_contradiction",
+        "no_data",
+    ] = Field(
+        ...,
+        description=(
+            "Cross-reference between transcript tone and insider trading actions. "
+            "strong_positive_alignment = bullish tone + meaningful insider buying; "
+            "major_contradiction = bullish tone + meaningful insider selling (excluding routine tax-withholding); "
+            "no_data = insider trading data missing."
+        ),
+    )
+    conviction_score: float = Field(
+        ...,
+        ge=-1.0,
+        le=1.0,
+        description=(
+            "Combined conviction score in [-1, 1]. Positive when insiders 'put their money where their mouth is'; "
+            "negative when insiders sell while management talks bullishly. Routine tax-withholding does NOT count."
+        ),
+    )
+
     overall_assessment: str = Field(
         ...,
-        description="Two-to-three sentence bottom-line on management's behavioral signals.",
+        description="Two-to-three sentence bottom-line synthesizing transcript tone AND insider-trade conviction.",
     )
 
 

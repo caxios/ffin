@@ -207,6 +207,11 @@ def fetch_and_resolve(cik: str, count: int = 10) -> list[dict]:
 
     Returns the same list as fetch_filing_list(), but with an added
     'document_url' key on each dict.
+
+    # Resolve primary document URLs의 의미 (주요 문서 URL 확인/추출)
+    RSS 피드에서 받은 링크를 타고 들어가면 바로 보고서 본문이 나오는 게 아니라, 여러 파일(HTML, XML, 이미지 등)이 모여 있는 Index 페이지가 나옵니다.
+    의미: "여러 파일 중에서 우리가 실제로 읽어야 할 메인 보고서 파일(HTML)의 진짜 주소를 찾아내라"는 뜻입니다.
+    필요성: 컴퓨터는 어떤 게 실제 보고서 본문이고 어떤 게 부속 이미지인지 스스로 알지 못합니다. 따라서 로직을 통해 filename.htm 같은 진짜 본문 주소를 골라내는 과정이 필요합니다.
     """
     filings = fetch_filing_list(cik, count=count)
     print(f"  RSS: found {len(filings)} filing(s) for CIK {cik}")

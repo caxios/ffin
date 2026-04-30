@@ -22,6 +22,8 @@ _DB_DIR = os.path.join(_BACKEND_DIR, "db")
 COMPANY_FACTS_DB = os.path.join(_DB_DIR, "company_facts.db")
 SEC_10KQ_DB = os.path.join(_DB_DIR, "sec_10kq.db")
 EARNINGS_DB = os.path.join(_DB_DIR, "earnings_transcripts.db")
+INSIDER_WATCHLIST_DB = os.path.join(_DB_DIR, "insider_watchlist.db")
+INSIDER_ALL_DB = os.path.join(_DB_DIR, "insider_all.db")
 
 
 # ── Curated XBRL concepts for assembling the three statements ─────────
@@ -164,6 +166,45 @@ def _notes_for_filing(accession_number: str) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def _insider_trades(ticker: str, limit: int = 60) -> tuple[list[dict[str, Any]], str | None]:
+    """
+    Return up to `limit` most-recent Form 4 trades for the ticker.
+    Tries insider_watchlist.db first, falls back to insider_all.db.
+
+    Returns (rows, source_db_path_or_None).
+    """
+    for path in (INSIDER_WATCHLIST_DB, INSIDER_ALL_DB):
+        if not os.path.exists(path):
+            continue
+        try:
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    owner_name, officer_title,
+                    is_director, is_officer, is_ten_pct_owner,
+                    transaction_date, transaction_code,
+                    security_title, security_category,
+                    amount, acquired_or_disposed,
+                    price_per_share, shares_owned_after,
+                    trade_ratio_pct, transaction_value, market_value_after
+                  FROM insider_trades
+                 WHERE UPPER(ticker)        = ?
+                    OR UPPER(issuer_symbol) = ?
+                 ORDER BY transaction_date DESC
+                 LIMIT ?
+                """,
+                (ticker.upper(), ticker.upper(), limit),
+            ).fetchall()
+            conn.close()
+            if rows:
+                return [dict(r) for r in rows], path
+        except sqlite3.Error:
+            continue
+    return [], None
+
+
 def _latest_transcript(ticker: str) -> dict[str, Any] | None:
     if not os.path.exists(EARNINGS_DB):
         return None
@@ -259,22 +300,45 @@ def load_company_data(ticker: str, max_chars: int = 80_000) -> dict[str, Any]:
 
     # ── sentiment_inputs ──
     transcript = _latest_transcript(ticker)
-    if transcript:
-        sentiment_inputs: dict[str, Any] = {
-            "ticker": ticker,
-            "fiscal_year": transcript.get("fiscal_year"),
-            "fiscal_quarter": transcript.get("fiscal_quarter"),
-            "call_date": transcript.get("call_date"),
-            "title": transcript.get("title"),
-            "source_url": transcript.get("source_url"),
-            "transcript_text": _truncate(transcript.get("transcript_text"), max_chars),
-            "_missing": [],
-        }
-    else:
-        sentiment_inputs = {
-            "ticker": ticker,
-            "_missing": ["no earnings call transcript found in earnings_transcripts.db"],
-        }
+    insider_rows, insider_src = _insider_trades(ticker)
+
+    sentiment_missing: list[str] = []
+    if not transcript:
+        sentiment_missing.append("no earnings call transcript found in earnings_transcripts.db")
+    if not insider_rows:
+        sentiment_missing.append("no Form 4 insider trades found in insider_watchlist.db / insider_all.db")
+
+    sentiment_inputs = {
+        "ticker": ticker,
+        "transcript": (
+            {
+                "fiscal_year": transcript.get("fiscal_year"),
+                "fiscal_quarter": transcript.get("fiscal_quarter"),
+                "call_date": transcript.get("call_date"),
+                "title": transcript.get("title"),
+                "source_url": transcript.get("source_url"),
+                "transcript_text": _truncate(transcript.get("transcript_text"), max_chars),
+            }
+            if transcript
+            else None
+        ),
+        "insider_trades": insider_rows,
+        "insider_trades_source_db": insider_src,
+        "insider_trades_count": len(insider_rows),
+        "_transaction_code_legend": {
+            "P": "open-market or private PURCHASE (conviction signal)",
+            "S": "open-market or private SALE",
+            "F": "share withholding for tax liability — ROUTINE, NOT discretionary",
+            "M": "exercise/conversion of derivative security",
+            "A": "grant/award/other acquisition (often routine)",
+            "D": "sale or disposition back to issuer",
+            "G": "bona fide gift",
+            "I": "discretionary transaction",
+            "X": "exercise of in/at-the-money derivative",
+            "C": "conversion of derivative",
+        },
+        "_missing": sentiment_missing,
+    }
 
     return {
         "ticker": ticker,

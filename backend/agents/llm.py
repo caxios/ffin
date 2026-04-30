@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 
 
-def get_llm(model: str = "gemini-1.5-pro", temperature: float = 0.2) -> ChatGoogleGenerativeAI:
+def get_llm(model: str = "gemini-2.5-pro", temperature: float = 0.2) -> ChatGoogleGenerativeAI:
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError(

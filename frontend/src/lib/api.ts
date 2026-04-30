@@ -58,6 +58,26 @@ export type Filters = {
   offset: number;
 };
 
+export type ChatRequest = { user_message: string; session_id?: string };
+export type ChatResponse = { session_id: string; reply?: string; response?: string };
+
+export const sendChat = async (
+  body: ChatRequest,
+  signal?: AbortSignal,
+): Promise<ChatResponse> => {
+  const res = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(`Chat request failed: ${res.status} ${detail}`);
+  }
+  return res.json();
+};
+
 export const buildTradesUrl = (f: Filters) => {
   const qs = new URLSearchParams();
   qs.set("source", f.source);
