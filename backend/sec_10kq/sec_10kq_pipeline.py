@@ -15,9 +15,12 @@ import time
 import argparse
 import logging
 
-from sec_10kq_rss import fetch_and_resolve
-from sec_10kq_parser import parse_single_filing
-from sec_10kq_db import save_batch, get_filing_count
+# Ensure parent directory is in path so absolute imports work
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sec_10kq.sec_10kq_rss import fetch_and_resolve
+from sec_10kq.sec_10kq_parser import parse_single_filing
+from sec_10kq.sec_10kq_db import save_batch, get_filing_count
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +29,22 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ============================================================
 
-# Hardcoded watchlist (answer to Q1)
-# Format: (ticker_label, CIK)
-WATCHLIST = [
-    ("AAPL",  "0000320193"),
-    ("MSFT",  "0000789019"),
-    ("NVDA",  "0001045810"),
-    ("TSLA",  "0001318605"),
-    ("GOOGL", "0001652044"),
-]
+from sec_cik_mapper import StockMapper
+
+# List of tickers to track
+TICKERS = ["AAPL", "MSFT", "NVDA", "TSLA", "GOOGL"]
+
+# Dynamically map tickers to zero-padded CIKs using sec_cik_mapper
+mapper = StockMapper()
+ticker_to_cik = mapper.ticker_to_cik
+
+WATCHLIST = []
+for ticker in TICKERS:
+    cik = ticker_to_cik.get(ticker)
+    if cik:
+        WATCHLIST.append((ticker, cik))
+    else:
+        print(f"[WARN] Could not find CIK for ticker: {ticker}")
 
 # Default number of filings to process per company
 DEFAULT_COUNT = 5

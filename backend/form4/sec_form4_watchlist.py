@@ -2,7 +2,7 @@ import time
 import json
 import requests
 from bs4 import BeautifulSoup
-from form4_parser import parse_form4, HEADERS
+from form4.form4_parser import parse_form4, HEADERS
 
 
 # ============================================================
@@ -101,7 +101,7 @@ def parse_all_from_watchlist(delay=REQUEST_DELAY, count=FILINGS_PER_COMPANY):
 
 
 if __name__ == "__main__":
-    from form4_db import save_to_db
+    from form4.form4_db import save_to_db
     import os
 
     results = parse_all_from_watchlist()

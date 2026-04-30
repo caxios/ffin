@@ -24,6 +24,10 @@ except ImportError:
     HAS_SEC_PARSER = False
     print("[WARN] sec-parser not installed. Only TOC fallback will be used.")
 
+import sys
+import os
+# Ensure parent directory is in path so we can import const
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from const import HEADERS
 
 logger = logging.getLogger(__name__)

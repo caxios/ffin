@@ -4,3 +4,12 @@
 
 # getattr(node, "text", "No Text") 
 > text 속성이 없으면 기본값으로 "No Text"를 반환
+
+# re.match(r"note\s*\d", node_text
+> node_text 가 반드시 "note 1", "Note2" 처럼 'note' 로 시작 해야만 인식을 합니다. 
+만약 "Important note 1" 처럼 앞에 다른 글자가 있으면 찾지 못합니다.
+
+# re.search(note_pattern, node_text)
+> re.search() 는 문자열 '전체' 를 훑어서 패턴이 어디에 있든 처음 발견되는 곳을 찾아냅니다.
+> node_text 의 앞, 중간, 뒤 어디든 note_pattern 이 포함되어 있으면 성공입니다.
+예를 들어 패턴이 "Risk" 라면, "Financial Risk Report" 라는 문자열에서 중간에 있는 "Risk" 를 찾아냅니다.

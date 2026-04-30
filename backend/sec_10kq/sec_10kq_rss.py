@@ -11,6 +11,10 @@ import re
 import time
 import requests
 from bs4 import BeautifulSoup
+import sys
+import os
+# Ensure parent directory is in path so we can import const
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from const import HEADERS
 
 # SEC rate-limit safe delay (max 10 req/s)

@@ -16,7 +16,7 @@ except ImportError:
 
 from tavily import TavilyClient
 
-from earnings_transcripts_db import find_cached, save_transcript
+from earnings.earnings_transcripts_db import find_cached, save_transcript
 
 
 TRANSCRIPT_DOMAINS = [

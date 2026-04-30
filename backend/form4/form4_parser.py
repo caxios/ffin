@@ -214,7 +214,7 @@ def parse_all_from_rss(delay: float = 0.2) -> list:
     return results
 
 if __name__ == "__main__":
-    from form4_db import save_to_db
+    from form4.form4_db import save_to_db
     import os
 
     parsed_list = parse_all_from_rss()
