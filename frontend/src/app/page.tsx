@@ -6,6 +6,10 @@ import { SummaryCards } from "@/components/summary-cards";
 import { FilterBar } from "@/components/filter-bar";
 import { TradesTable } from "@/components/trades-table";
 import { CioChat } from "@/components/cio-chat";
+import { SecFilings } from "@/components/sec-filings";
+import { FinancialData } from "@/components/financial-data";
+import { EarningsTranscript } from "@/components/earnings-transcript";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Filters } from "@/lib/api";
 
 const initialFilters: Filters = {
@@ -28,10 +32,34 @@ export default function DashboardPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <FilterBar filters={filters} onChange={patch} />
-            <TradesTable
-              filters={filters}
-              onPage={(offset) => patch({ offset })}
-            />
+            
+            <Tabs defaultValue="insider" className="w-full">
+              <TabsList className="mb-4 grid grid-cols-4 w-full">
+                <TabsTrigger value="insider">Insider Trades</TabsTrigger>
+                <TabsTrigger value="sec">SEC Filings</TabsTrigger>
+                <TabsTrigger value="financials">Financials</TabsTrigger>
+                <TabsTrigger value="transcripts">Transcripts</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="insider">
+                <TradesTable
+                  filters={filters}
+                  onPage={(offset) => patch({ offset })}
+                />
+              </TabsContent>
+              
+              <TabsContent value="sec">
+                <SecFilings ticker={filters.ticker} />
+              </TabsContent>
+
+              <TabsContent value="financials">
+                <FinancialData ticker={filters.ticker} />
+              </TabsContent>
+
+              <TabsContent value="transcripts">
+                <EarningsTranscript ticker={filters.ticker} />
+              </TabsContent>
+            </Tabs>
           </div>
           <CioChat className="lg:sticky lg:top-24" />
         </div>

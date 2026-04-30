@@ -104,7 +104,14 @@ def chat(user_message: str, session_id: str) -> str:
         config=config,
     )
     final = result["messages"][-1]
-    return getattr(final, "content", str(final))
+    content = getattr(final, "content", str(final))
+    
+    # If the LLM returns a list of blocks (e.g. Anthropic/Gemini multi-modal blocks), extract text
+    if isinstance(content, list):
+        texts = [block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") == "text"]
+        return "".join(texts)
+        
+    return str(content)
 
 
 def reset_session(session_id: str) -> None:

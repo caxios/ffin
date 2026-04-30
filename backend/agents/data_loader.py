@@ -77,17 +77,27 @@ CASH_FLOW_CONCEPTS = [
 # ── Ticker → CIK lookup ───────────────────────────────────────────────
 def _lookup_cik(ticker: str) -> tuple[str | None, str | None]:
     """Return (cik, entity_name) for a ticker, or (None, None) if unknown."""
-    if not os.path.exists(COMPANY_FACTS_DB):
-        return None, None
+    # 1. Try company_facts.db
+    if os.path.exists(COMPANY_FACTS_DB):
+        conn = sqlite3.connect(COMPANY_FACTS_DB)
+        row = conn.execute(
+            "SELECT cik, entity_name FROM companies WHERE UPPER(ticker) = ? LIMIT 1",
+            (ticker.upper(),),
+        ).fetchone()
+        conn.close()
+        if row:
+            return str(row[0]).zfill(10), row[1]
+            
+    # 2. Fallback to sec_cik_mapper
+    try:
+        from sec_cik_mapper import StockMapper
+        mapper = StockMapper()
+        cik = mapper.ticker_to_cik.get(ticker.upper())
+        if cik:
+            return cik, ticker.upper()
+    except ImportError:
+        pass
 
-    conn = sqlite3.connect(COMPANY_FACTS_DB)
-    row = conn.execute(
-        "SELECT cik, entity_name FROM companies WHERE UPPER(ticker) = ? LIMIT 1",
-        (ticker.upper(),),
-    ).fetchone()
-    conn.close()
-    if row:
-        return row[0], row[1]
     return None, None
 
 

@@ -23,6 +23,7 @@ from form4.form4_parser import parse_all_from_rss
 from form4.form4_db import save_to_db
 from earnings.tavily_transcripts import fetch_transcript
 from agents.conversational_cio import chat as cio_chat, reset_session as cio_reset
+from agents.data_loader import _lookup_cik, SEC_10KQ_DB
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ DB_PATHS = {
 }
 
 TRANSCRIPTS_DB = os.path.join(BASE_DIR, "db", "earnings_transcripts.db")
+COMPANY_FACTS_DB = os.path.join(BASE_DIR, "db", "company_facts.db")
 
 # ---------------------------------------------------------------------------
 # App
@@ -248,6 +250,63 @@ def refresh(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/documents/{ticker} — fetch SEC 10-K/10-Q text sections
+# ---------------------------------------------------------------------------
+
+@app.get("/api/documents/{ticker}/list")
+def list_documents(ticker: str):
+    """Return a list of available 10-K/10-Q filings for a ticker."""
+    cik, _ = _lookup_cik(ticker)
+    if not cik:
+        raise HTTPException(status_code=404, detail=f"CIK not found for {ticker}")
+        
+    if not os.path.exists(SEC_10KQ_DB):
+        return {"filings": []}
+        
+    conn = sqlite3.connect(SEC_10KQ_DB)
+    conn.row_factory = sqlite3.Row
+    cik_padded = cik.lstrip("0")
+    
+    rows = conn.execute(
+        """
+        SELECT accession_number, form_type, filing_date, company_name
+        FROM filing_sections
+        WHERE cik IN (?, ?)
+        ORDER BY filing_date DESC
+        """,
+        (cik, cik_padded)
+    ).fetchall()
+    conn.close()
+    
+    return {"filings": [dict(r) for r in rows]}
+
+
+@app.get("/api/documents/{ticker}/{accession_number}")
+def get_document_detail(ticker: str, accession_number: str):
+    """Return MD&A and Risk Factors for a specific filing."""
+    if not os.path.exists(SEC_10KQ_DB):
+        raise HTTPException(status_code=404, detail="sec_10kq.db not found")
+        
+    conn = sqlite3.connect(SEC_10KQ_DB)
+    conn.row_factory = sqlite3.Row
+    
+    row = conn.execute(
+        """
+        SELECT company_name, form_type, filing_date, business, risk_factors, mda 
+        FROM filing_sections
+        WHERE accession_number = ?
+        """,
+        (accession_number,)
+    ).fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Filing not found")
+        
+    return dict(row)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/transcript — on-demand earnings call transcript
 # ---------------------------------------------------------------------------
 
@@ -278,6 +337,65 @@ def get_transcript(
     if not row:
         raise HTTPException(status_code=404, detail="No transcript found")
     return row
+
+
+@app.get("/api/transcripts/{ticker}/list")
+def list_transcripts(ticker: str):
+    """Return a list of available earnings call transcripts for a ticker."""
+    if not os.path.exists(TRANSCRIPTS_DB):
+        return {"transcripts": []}
+        
+    conn = sqlite3.connect(TRANSCRIPTS_DB)
+    conn.row_factory = sqlite3.Row
+    
+    rows = conn.execute(
+        """
+        SELECT fiscal_year, fiscal_quarter, call_date, title
+        FROM earnings_transcripts
+        WHERE ticker = ?
+        ORDER BY fiscal_year DESC, fiscal_quarter DESC
+        """,
+        (ticker.upper(),)
+    ).fetchall()
+    conn.close()
+    
+    return {"transcripts": [dict(r) for r in rows]}
+
+
+@app.get("/api/financials/{ticker}")
+def get_financials(ticker: str):
+    """Return historical XBRL facts (Net Income, Revenue, etc.) for a ticker."""
+    cik, _ = _lookup_cik(ticker)
+    if not cik:
+        raise HTTPException(status_code=404, detail=f"CIK not found for {ticker}")
+        
+    if not os.path.exists(COMPANY_FACTS_DB):
+        return {"facts": []}
+        
+    conn = sqlite3.connect(COMPANY_FACTS_DB)
+    conn.row_factory = sqlite3.Row
+    
+    # Common financial concepts to pull
+    concepts = [
+        "NetIncomeLoss", "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "SalesRevenueNet", "OperatingIncomeLoss", "Assets", "Liabilities", 
+        "CashAndCashEquivalentsAtCarryingValue", "EarningsPerShareBasic"
+    ]
+    placeholders = ",".join("?" * len(concepts))
+    
+    rows = conn.execute(
+        f"""
+        SELECT concept, label, val, unit, fy, fp, form, period_end, filed
+        FROM company_facts
+        WHERE cik = ?
+          AND concept IN ({placeholders})
+        ORDER BY period_end DESC, concept ASC
+        """,
+        (cik, *concepts)
+    ).fetchall()
+    conn.close()
+    
+    return {"facts": [dict(r) for r in rows]}
 
 
 # ---------------------------------------------------------------------------

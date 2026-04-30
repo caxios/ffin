@@ -82,7 +82,11 @@ def _consult(system_prompt: str, schema, ticker: str, question: str, slot: str) 
                 system_prompt
                 + "\n\nThe CIO has forwarded a SPECIFIC FOLLOW-UP QUESTION from the user. "
                 "Tailor your structured report so it answers that question. The question is "
-                "in the `user_question_focus` field of the input."
+                "in the `user_question_focus` field of the input.\n\n"
+                "CRITICAL INSTRUCTION: You MUST ONLY use the data provided in the Input payload. "
+                "The Input payload contains real data from the database files. "
+                "Do NOT hallucinate or bring in outside information. "
+                "If the data is not in the payload, clearly state that the data is not available in the database files."
             )
         ),
         HumanMessage(
@@ -107,6 +111,9 @@ def consult_financial_agent(ticker: str, question: str) -> str:
     USE THIS WHEN: the user asks quantitative questions (margins, ratios,
     cash flow, debt) OR about accounting policies / red flags.
 
+    IMPORTANT: The agent MUST ONLY use data from the database files. 
+    If the data is not in the DB, it must say so. Do not hallucinate external data.
+
     Args:
         ticker: Stock symbol (e.g. "AAPL").
         question: The specific user question to focus on.
@@ -124,6 +131,9 @@ def consult_risk_agent(ticker: str, question: str) -> str:
     USE THIS WHEN: the user asks "why" or qualitative questions about the
     business (e.g., "What were the legal risks mentioned in the 10-K?",
     "What is their competitive moat?", "What macro headwinds did they cite?").
+
+    IMPORTANT: The agent MUST ONLY use data from the database files. 
+    If the data is not in the DB, it must say so. Do not hallucinate external data.
 
     Args:
         ticker: Stock symbol.
@@ -143,6 +153,9 @@ def consult_sentiment_agent(ticker: str, question: str) -> str:
 
     USE THIS WHEN: the user asks about management tone, behavioral signals,
     or whether insiders are "putting their money where their mouth is".
+
+    IMPORTANT: The agent MUST ONLY use data from the database files. 
+    If the data is not in the DB, it must say so. Do not hallucinate external data.
 
     Args:
         ticker: Stock symbol.
