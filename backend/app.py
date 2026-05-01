@@ -16,6 +16,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from form4.sec_form4_watchlist import parse_all_from_watchlist, WATCHLIST
@@ -24,6 +25,12 @@ from form4.form4_db import save_to_db
 from earnings.tavily_transcripts import fetch_transcript
 from agents.conversational_cio import chat as cio_chat, reset_session as cio_reset
 from agents.data_loader import _lookup_cik, SEC_10KQ_DB
+from company_data import (
+    SECRateLimit,
+    TickerNotFound,
+    get_company_data,
+)
+from company_facts.company_specific_fin import fetch_and_save as fetch_and_save_company_facts
 
 
 # ---------------------------------------------------------------------------
@@ -362,40 +369,134 @@ def list_transcripts(ticker: str):
     return {"transcripts": [dict(r) for r in rows]}
 
 
-@app.get("/api/financials/{ticker}")
-def get_financials(ticker: str):
-    """Return historical XBRL facts (Net Income, Revenue, etc.) for a ticker."""
+def _query_financial_periods(cik: str) -> list[dict]:
+    if not os.path.exists(COMPANY_FACTS_DB):
+        return []
+    conn = sqlite3.connect(COMPANY_FACTS_DB)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT fy, fp, form, filed, COUNT(*) as fact_count
+        FROM company_facts
+        WHERE cik = ?
+        GROUP BY fy, fp, form, filed
+        ORDER BY filed DESC
+        """,
+        (cik,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/financials/{ticker}/list")
+def list_financial_periods(ticker: str):
+    """
+    Return unique filing periods for a ticker.
+
+    DB-first: query company_facts.db. On miss, fetch from SEC EDGAR
+    (companyfacts API), persist, then re-query.
+    """
     cik, _ = _lookup_cik(ticker)
     if not cik:
         raise HTTPException(status_code=404, detail=f"CIK not found for {ticker}")
-        
+
+    periods = _query_financial_periods(cik)
+    if not periods:
+        try:
+            fetch_and_save_company_facts(ticker, COMPANY_FACTS_DB)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch financial facts from SEC: {e!r}",
+            )
+        periods = _query_financial_periods(cik)
+
+    return {"periods": periods}
+
+
+def _query_financial_facts(cik: str, fy: int, fp: str, form: str, filed: str) -> list[dict]:
     if not os.path.exists(COMPANY_FACTS_DB):
-        return {"facts": []}
-        
+        return []
     conn = sqlite3.connect(COMPANY_FACTS_DB)
     conn.row_factory = sqlite3.Row
-    
-    # Common financial concepts to pull
-    concepts = [
-        "NetIncomeLoss", "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
-        "SalesRevenueNet", "OperatingIncomeLoss", "Assets", "Liabilities", 
-        "CashAndCashEquivalentsAtCarryingValue", "EarningsPerShareBasic"
-    ]
-    placeholders = ",".join("?" * len(concepts))
-    
     rows = conn.execute(
-        f"""
+        """
         SELECT concept, label, val, unit, fy, fp, form, period_end, filed
         FROM company_facts
-        WHERE cik = ?
-          AND concept IN ({placeholders})
-        ORDER BY period_end DESC, concept ASC
+        WHERE cik = ? AND fy = ? AND fp = ? AND form = ? AND filed = ?
+        ORDER BY concept ASC, period_end DESC
         """,
-        (cik, *concepts)
+        (cik, fy, fp, form, filed),
     ).fetchall()
     conn.close()
-    
-    return {"facts": [dict(r) for r in rows]}
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/financials/{ticker}/detail")
+def get_financial_detail(
+    ticker: str,
+    fy:   int = Query(...),
+    fp:   str = Query(...),
+    form: str = Query(...),
+    filed: str = Query(...)
+):
+    """
+    Return ALL XBRL facts for a specific filing period.
+
+    DB-first: if no rows match, fetch the entire companyfacts payload from
+    SEC EDGAR and re-query.
+    """
+    cik, _ = _lookup_cik(ticker)
+    if not cik:
+        raise HTTPException(status_code=404, detail=f"CIK not found for {ticker}")
+
+    facts = _query_financial_facts(cik, fy, fp, form, filed)
+    if not facts:
+        try:
+            fetch_and_save_company_facts(ticker, COMPANY_FACTS_DB)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch financial facts from SEC: {e!r}",
+            )
+        facts = _query_financial_facts(cik, fy, fp, form, filed)
+
+    return {"facts": facts}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/company-data/{ticker} — search-driven, DB-first cached lookup
+# ---------------------------------------------------------------------------
+
+@app.get("/api/company-data/{ticker}")
+def get_company_data_endpoint(ticker: str):
+    """
+    Return Form 4 + 10-K/10-Q data for `ticker`.
+
+    Strategy:
+      1. Resolve ticker → CIK (404 if unknown).
+      2. Check sec_10kq.db / insider_*.db for fresh rows (per-form TTL).
+      3. On miss, fetch from SEC EDGAR, persist, and return.
+
+    Errors:
+      404 — unknown ticker
+      503 — SEC rate-limited the scrape (Retry-After header set)
+      502 — other upstream/parse failure
+    """
+    try:
+        return get_company_data(ticker)
+    except TickerNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except SECRateLimit as e:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": str(e), "retry_after": e.retry_after},
+            headers={"Retry-After": str(e.retry_after)},
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e!r}")
 
 
 # ---------------------------------------------------------------------------

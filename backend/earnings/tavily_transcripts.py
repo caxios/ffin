@@ -141,8 +141,14 @@ def fetch_transcript(
 
 
 if __name__ == "__main__":
-    import json
-    row = fetch_transcript("AAPL", 2024, 3)
+    import argparse, json
+    parser = argparse.ArgumentParser(description="Fetch an earnings call transcript.")
+    parser.add_argument("ticker")
+    parser.add_argument("year", type=int)
+    parser.add_argument("quarter", type=int, choices=[1, 2, 3, 4])
+    args = parser.parse_args()
+
+    row = fetch_transcript(args.ticker, args.year, args.quarter)
     if row:
         preview = (row["transcript_text"] or "")[:500]
         print(json.dumps({**row, "transcript_text": preview + "..."}, indent=2))

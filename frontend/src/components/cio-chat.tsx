@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -26,11 +27,11 @@ type Message = {
   createdAt: number;
 };
 
-const SESSION_KEY = "ffin.cio.session_id";
-const HISTORY_KEY = "ffin.cio.history";
+const SESSION_KEY_BASE = "ffin.cio.session_id";
+const HISTORY_KEY_BASE = "ffin.cio.history";
 const MAX_PERSISTED = 50;
 
-const WELCOME: Message = {
+const GENERAL_WELCOME: Message = {
   id: "welcome",
   role: "ai",
   content:
@@ -38,45 +39,72 @@ const WELCOME: Message = {
   createdAt: 0,
 };
 
+function tickerWelcome(ticker: string): Message {
+  return {
+    id: "welcome",
+    role: "ai",
+    content: `I am the **Chief Investment Officer** agent, focused on **${ticker}**. Ask me about its insider trades, financial metrics, business risks, or earnings tone — I will query the data and consult the specialist analysts as needed.`,
+    createdAt: 0,
+  };
+}
+
 function newId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 }
 
-export function CioChat({ className }: { className?: string }) {
+export function CioChat({
+  className,
+  ticker,
+}: {
+  className?: string;
+  ticker?: string;
+}) {
   const inputId = useId();
-  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const scopeKey = ticker ? `.${ticker}` : "";
+  const sessionKey = `${SESSION_KEY_BASE}${scopeKey}`;
+  const historyKey = `${HISTORY_KEY_BASE}${scopeKey}`;
+  const welcome = useMemo(
+    () => (ticker ? tickerWelcome(ticker) : GENERAL_WELCOME),
+    [ticker],
+  );
+
+  const [messages, setMessages] = useState<Message[]>([welcome]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ── Hydrate session_id and saved history (best-effort) ──────────────
+  // ── Hydrate session_id and saved history (best-effort, per-ticker) ──
   useEffect(() => {
     try {
-      const sid = localStorage.getItem(SESSION_KEY);
-      if (sid) setSessionId(sid);
-      const raw = localStorage.getItem(HISTORY_KEY);
+      const sid = localStorage.getItem(sessionKey);
+      setSessionId(sid);
+      const raw = localStorage.getItem(historyKey);
       if (raw) {
         const parsed = JSON.parse(raw) as Message[];
-        if (Array.isArray(parsed) && parsed.length) setMessages(parsed);
+        if (Array.isArray(parsed) && parsed.length) {
+          setMessages(parsed);
+          return;
+        }
       }
+      setMessages([welcome]);
     } catch {
       // ignore — privacy mode, quota, etc.
     }
-  }, []);
+  }, [sessionKey, historyKey, welcome]);
 
-  // ── Persist history (cheap; bounded) ─────────────────────────────────
+  // ── Persist history (cheap; bounded, per-ticker) ─────────────────────
   useEffect(() => {
     try {
       const tail = messages.slice(-MAX_PERSISTED);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(tail));
+      localStorage.setItem(historyKey, JSON.stringify(tail));
     } catch {
       /* ignore */
     }
-  }, [messages]);
+  }, [messages, historyKey]);
 
   // ── Auto-scroll on new message OR loading-indicator change ──────────
   useEffect(() => {
@@ -110,14 +138,20 @@ export function CioChat({ className }: { className?: string }) {
       abortRef.current = controller;
 
       try {
+        // On the very first turn of a ticker-scoped chat, prefix the message
+        // so the agent's memory anchors on the right company.
+        const payload =
+          ticker && !sessionId
+            ? `Let's discuss ${ticker}. ${trimmed}`
+            : trimmed;
         const data = await sendChat(
-          { user_message: trimmed, session_id: sessionId ?? undefined },
+          { user_message: payload, session_id: sessionId ?? undefined },
           controller.signal,
         );
         if (data.session_id && data.session_id !== sessionId) {
           setSessionId(data.session_id);
           try {
-            localStorage.setItem(SESSION_KEY, data.session_id);
+            localStorage.setItem(sessionKey, data.session_id);
           } catch {
             /* ignore */
           }
@@ -141,7 +175,7 @@ export function CioChat({ className }: { className?: string }) {
         abortRef.current = null;
       }
     },
-    [append, isLoading, sessionId],
+    [append, isLoading, sessionId, ticker, sessionKey],
   );
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -159,11 +193,11 @@ export function CioChat({ className }: { className?: string }) {
 
   const onReset = () => {
     abortRef.current?.abort();
-    setMessages([WELCOME]);
+    setMessages([welcome]);
     setSessionId(null);
     try {
-      localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(HISTORY_KEY);
+      localStorage.removeItem(sessionKey);
+      localStorage.removeItem(historyKey);
     } catch {
       /* ignore */
     }

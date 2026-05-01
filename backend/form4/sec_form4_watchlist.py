@@ -3,6 +3,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from form4.form4_parser import parse_form4, HEADERS
+from agents.data_loader import _lookup_cik
 
 
 # ============================================================
@@ -22,14 +23,19 @@ REQUEST_DELAY = 0.2
 # Watchlist-specific: fetch filings for a single company
 # ============================================================
 
-def fetch_filings(ticker, count=FILINGS_PER_COMPANY):
+def fetch_filings(cik, count=FILINGS_PER_COMPANY):
     """
-    EDGAR Atom 피드에서 특정 회사의 최근 Form 4 filing 목록을 가져옵니다.
-    sec_form4_rss.py와 동일한 엔드포인트를 사용하되, CIK 파라미터로 필터링합니다.
+    Fetch recent Form 4 filings for a company from EDGAR's Atom feed.
+
+    `cik` MUST be a numeric CIK (string or int). EDGAR's browse-edgar
+    sometimes accepts ticker symbols in the CIK= slot, but unreliably —
+    callers should resolve the ticker to a CIK first (see
+    agents.data_loader._lookup_cik).
     """
+    cik_str = str(cik).lstrip("0") or "0"
     url = (
         "https://www.sec.gov/cgi-bin/browse-edgar"
-        f"?action=getcompany&CIK={ticker}&type=4&dateb="
+        f"?action=getcompany&CIK={cik_str}&type=4&dateb="
         f"&owner=include&count={count}&search_text=&action=getcompany&output=atom"
     )
 
@@ -72,7 +78,11 @@ def parse_all_from_watchlist(delay=REQUEST_DELAY, count=FILINGS_PER_COMPANY):
         print(f"\n--- {ticker} ---")
 
         try:
-            filings = fetch_filings(ticker, count=count)
+            cik, _ = _lookup_cik(ticker)
+            if not cik:
+                print(f"  [ERROR] {ticker}: CIK not found, skipping")
+                continue
+            filings = fetch_filings(cik, count=count)
             print(f"  Found {len(filings)} recent Form 4 filing(s)")
 
             results = []

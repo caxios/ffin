@@ -1,9 +1,28 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
+export class FetchError extends Error {
+  status: number;
+  detail?: string;
+  constructor(status: number, message: string, detail?: string) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 export const fetcher = async (url: string) => {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await res.json();
+      detail = typeof body?.detail === "string" ? body.detail : undefined;
+    } catch {
+      /* non-JSON body */
+    }
+    throw new FetchError(res.status, `${res.status} ${res.statusText}`, detail);
+  }
   return res.json();
 };
 
@@ -76,6 +95,48 @@ export const sendChat = async (
     throw new Error(`Chat request failed: ${res.status} ${detail}`);
   }
   return res.json();
+};
+
+export type CompanyDataFiling = {
+  accession_number: string;
+  form_type: string;
+  filing_date: string;
+  company_name: string | null;
+  index_url: string | null;
+  document_url: string | null;
+  has_business: boolean;
+  has_risk_factors: boolean;
+  has_mda: boolean;
+};
+
+export type CompanyDataTrade = {
+  owner_name: string;
+  officer_title: string | null;
+  is_director: string | null;
+  is_officer: string | null;
+  is_ten_pct_owner: string | null;
+  transaction_date: string;
+  transaction_code: string;
+  security_title: string | null;
+  security_category: string | null;
+  amount: number | null;
+  acquired_or_disposed: "A" | "D" | string;
+  price_per_share: number | null;
+  shares_owned_after: number | null;
+  trade_ratio_pct: number | null;
+  transaction_value: number | null;
+  market_value_after: number | null;
+  source_url: string | null;
+};
+
+export type CompanyDataResponse = {
+  ticker: string;
+  cik: string;
+  company_name: string | null;
+  cache_status: "hit" | "partial" | "miss";
+  filings_10kq: CompanyDataFiling[];
+  form4_trades: CompanyDataTrade[];
+  fetched_at: string;
 };
 
 export const buildTradesUrl = (f: Filters) => {
