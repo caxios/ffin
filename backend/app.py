@@ -469,13 +469,22 @@ def get_financial_detail(
 # ---------------------------------------------------------------------------
 
 @app.get("/api/company-data/{ticker}")
-def get_company_data_endpoint(ticker: str):
+def get_company_data_endpoint(
+    ticker: str,
+    limit: int = Query(
+        4,
+        ge=1,
+        le=1000,
+        description="How many 10-K/10-Q filings to return. If the DB has fewer than this, missing filings are scraped from SEC.",
+    ),
+):
     """
     Return Form 4 + 10-K/10-Q data for `ticker`.
 
     Strategy:
       1. Resolve ticker → CIK (404 if unknown).
-      2. Check sec_10kq.db / insider_*.db for fresh rows (per-form TTL).
+      2. Check sec_10kq.db / insider_*.db for fresh rows (per-form TTL +
+         "DB has at least `limit` 10-K/Q rows").
       3. On miss, fetch from SEC EDGAR, persist, and return.
 
     Errors:
@@ -484,7 +493,7 @@ def get_company_data_endpoint(ticker: str):
       502 — other upstream/parse failure
     """
     try:
-        return get_company_data(ticker)
+        return get_company_data(ticker, limit_10kq=limit)
     except TickerNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     except SECRateLimit as e:

@@ -3,11 +3,20 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { fetcher, API_BASE } from "@/lib/api";
+import { downloadCsv } from "@/lib/export";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Loader2, TrendingUp, TrendingDown, Calendar } from "lucide-react";
+import {
+  AlertCircle,
+  Calendar,
+  Download,
+  Loader2,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -157,6 +166,31 @@ export function FinancialData({ ticker }: FinancialDataProps) {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!detailData?.facts?.length}
+            onClick={() => {
+              if (!detailData?.facts?.length || !currentPeriod) return;
+              downloadCsv(
+                detailData.facts.map((f) => ({
+                  concept: f.concept,
+                  label: f.label ?? "",
+                  val: f.val,
+                  unit: f.unit,
+                  fy: f.fy,
+                  fp: f.fp,
+                  form: f.form,
+                  period_end: f.period_end,
+                  filed: f.filed,
+                })),
+                `${ticker}_${currentPeriod.form}_FY${currentPeriod.fy}_${currentPeriod.fp}_facts.csv`,
+              );
+            }}
+          >
+            <Download className="h-3 w-3" />
+            CSV
+          </Button>
         </div>
       </div>
 

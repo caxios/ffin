@@ -34,12 +34,12 @@ from sec_10kq.sec_10kq_rss import fetch_and_resolve
 TTL_10KQ_DAYS = 90
 TTL_FORM4_DAYS = 7
 
-# How many filings to pull on a cache miss
+# Default 10-K/Q rows to surface in a response (caller can override).
+# A staleness re-scrape always pulls at least this many.
 SCRAPE_COUNT_10KQ = 5
 SCRAPE_COUNT_FORM4 = 10
 
-# How many cached rows to surface in the response
-RETURN_LIMIT_10KQ = 20
+DEFAULT_LIMIT_10KQ = 4
 RETURN_LIMIT_FORM4 = 30
 
 
@@ -86,7 +86,7 @@ def resolve_ticker(ticker: str) -> tuple[str, str]:
 
 
 # ── 10-K / 10-Q DB layer ────────────────────────────────────────────────
-def _select_10kq_rows(cik: str, limit: int = RETURN_LIMIT_10KQ) -> list[dict[str, Any]]:
+def _select_10kq_rows(cik: str, limit: int = DEFAULT_LIMIT_10KQ) -> list[dict[str, Any]]:
     if not os.path.exists(SEC_10KQ_DB):
         return []
     cik_unpadded = cik.lstrip("0")
@@ -118,6 +118,22 @@ def _select_10kq_rows(cik: str, limit: int = RETURN_LIMIT_10KQ) -> list[dict[str
 def _latest_10kq_date(cik: str) -> str | None:
     rows = _select_10kq_rows(cik, limit=1)
     return rows[0]["filing_date"] if rows else None
+
+
+def _count_10kq_rows(cik: str) -> int:
+    """Number of 10-K/10-Q rows already cached for `cik` (padded or unpadded)."""
+    if not os.path.exists(SEC_10KQ_DB):
+        return 0
+    cik_unpadded = cik.lstrip("0")
+    conn = sqlite3.connect(SEC_10KQ_DB)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM filing_sections WHERE cik IN (?, ?)",
+            (cik, cik_unpadded),
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(row[0]) if row else 0
 
 
 # ── Form 4 DB layer ─────────────────────────────────────────────────────
@@ -194,10 +210,10 @@ def _wrap_rate_limit(exc: Exception) -> SECRateLimit | None:
     return None
 
 
-def _scrape_10kq(cik: str) -> int:
+def _scrape_10kq(cik: str, count: int = SCRAPE_COUNT_10KQ) -> int:
     """Fetch + parse + save 10-K/10-Q filings for `cik`. Returns inserted count."""
     try:
-        filings = fetch_and_resolve(cik, count=SCRAPE_COUNT_10KQ)
+        filings = fetch_and_resolve(cik, count=count)
     except requests.HTTPError as e:
         rate = _wrap_rate_limit(e)
         if rate:
@@ -265,10 +281,20 @@ def _scrape_form4(cik: str) -> int:
 
 
 # ── Public orchestrator ─────────────────────────────────────────────────
-def get_company_data(ticker: str) -> dict[str, Any]:
+def get_company_data(
+    ticker: str,
+    limit_10kq: int = DEFAULT_LIMIT_10KQ,
+) -> dict[str, Any]:
     """
-    Resolve ticker → CIK, then return cached 10-K/10-Q + Form 4 data,
-    re-scraping only the form types whose freshest row is older than TTL.
+    Resolve ticker → CIK, then return cached 10-K/10-Q + Form 4 data.
+
+    Re-scrapes when:
+      • the cache is stale per TTL, OR
+      • the DB has fewer 10-K/Q rows than the caller asked for.
+
+    `limit_10kq` controls how many filings to surface AND, on a miss, how
+    many to pull from EDGAR's RSS. Pass a large number (e.g. 1000) for
+    "all available".
 
     Raises:
         TickerNotFound: ticker cannot be mapped to a CIK.
@@ -277,17 +303,24 @@ def get_company_data(ticker: str) -> dict[str, Any]:
     ticker = ticker.upper().strip()
     cik, company_name = resolve_ticker(ticker)
 
+    have_10kq = _count_10kq_rows(cik)
     fresh_10kq = _is_within_ttl(_latest_10kq_date(cik), TTL_10KQ_DAYS)
+    enough_10kq = have_10kq >= limit_10kq
+    served_10kq_from_cache = fresh_10kq and enough_10kq
+
     fresh_form4 = _is_within_ttl(_latest_form4_date(ticker, cik), TTL_FORM4_DAYS)
 
-    if not fresh_10kq:
-        _scrape_10kq(cik)
+    if not served_10kq_from_cache:
+        # Pull at least `limit_10kq` from RSS so we can satisfy the
+        # request after one round-trip; save_batch dedupes against
+        # what's already in the DB via UNIQUE(accession_number).
+        _scrape_10kq(cik, count=max(limit_10kq, SCRAPE_COUNT_10KQ))
     if not fresh_form4:
         _scrape_form4(cik)
 
-    if fresh_10kq and fresh_form4:
+    if served_10kq_from_cache and fresh_form4:
         cache_status = "hit"
-    elif fresh_10kq or fresh_form4:
+    elif served_10kq_from_cache or fresh_form4:
         cache_status = "partial"
     else:
         cache_status = "miss"
@@ -297,7 +330,7 @@ def get_company_data(ticker: str) -> dict[str, Any]:
         "cik": cik,
         "company_name": company_name,
         "cache_status": cache_status,
-        "filings_10kq": _select_10kq_rows(cik),
+        "filings_10kq": _select_10kq_rows(cik, limit=limit_10kq),
         "form4_trades": _select_form4_rows(ticker, cik),
         "fetched_at": _now_iso(),
     }
