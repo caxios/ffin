@@ -305,18 +305,32 @@ def get_document_detail(ticker: str, accession_number: str):
     
     row = conn.execute(
         """
-        SELECT company_name, form_type, filing_date, business, risk_factors, mda 
+        SELECT company_name, form_type, filing_date, business, risk_factors, mda
         FROM filing_sections
         WHERE accession_number = ?
         """,
         (accession_number,)
     ).fetchone()
-    conn.close()
-    
+
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="Filing not found")
-        
-    return dict(row)
+
+    notes = conn.execute(
+        """
+        SELECT note_key, note_text
+        FROM filing_notes
+        WHERE accession_number = ?
+        ORDER BY id ASC
+        """,
+        (accession_number,)
+    ).fetchall()
+    conn.close()
+
+    return {
+        **dict(row),
+        "financial_notes": [dict(n) for n in notes],
+    }
 
 
 # ---------------------------------------------------------------------------

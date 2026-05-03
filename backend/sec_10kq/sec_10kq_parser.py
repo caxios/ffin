@@ -115,28 +115,6 @@ SECTION_LOOKUP_10Q = {
 
 
 # ============================================================
-# Crucial Financial Notes to extract (at least 10 titles)
-# ============================================================
-
-CRUCIAL_NOTE_TITLES = [
-    r"revenue\s+recognition",
-    r"summary\s+of\s+significant\s+accounting\s+polic",
-    r"(long[- ]?term\s+)?debt",
-    r"commitments\s+and\s+contingenc",
-    r"income\s+taxes",
-    r"stockholders.?\s+equity",
-    r"fair\s+value",
-    r"segment\s+(information|reporting)",
-    r"(goodwill|intangible\s+assets)",
-    r"leases",
-    r"acquisitions",
-    r"(stock[- ]?based|share[- ]?based)\s+comp",
-    r"earnings\s+per\s+share",
-    r"subsequent\s+events",
-]
-
-
-# ============================================================
 # Document Fetching
 # ============================================================
 
@@ -265,11 +243,11 @@ def _extract_section(tree, lookup_config: dict) -> str | None:
     return None
 
 
-def _extract_crucial_notes_from_tree(tree) -> dict:
+def _extract_all_notes_from_tree(tree) -> dict:
     """
-    Find individual notes (NOTE 1, NOTE 2, etc.) anywhere in the tree
-    and extract only the crucial ones matching CRUCIAL_NOTE_TITLES.
-    
+    Find every numbered note (NOTE 1, NOTE 2, etc.) anywhere in the tree
+    and return its full text.
+
     Notes can appear as:
     - TitleElement children under Item 1 (10-Q) or Item 8 (10-K)
     - Sometimes nested under a TextElement that starts with "NOTES TO..."
@@ -281,18 +259,16 @@ def _extract_crucial_notes_from_tree(tree) -> dict:
             stype = _get_semantic_type(node)
             node_text = node.text.strip() if hasattr(node, "text") else ""
 
-            # Match "NOTE X — Title" or "Note X: Title" patterns
-            if stype == "TitleElement" and re.match(r"note\s*\d", node_text, re.IGNORECASE):
-                for note_pattern in CRUCIAL_NOTE_TITLES:
-                    if re.search(note_pattern, node_text, re.IGNORECASE):
-                        key = re.sub(r"[^a-z0-9]+", "_", node_text.lower()).strip("_")
-                        # Truncate long keys
-                        if len(key) > 60:
-                            key = key[:60]
-                        extracted[key] = _collect_node_text(node)
-                        break
+            # Match "Note 1 — Title", "Note 1. Title", "1. Title", or "1 — Title".
+            # Some filers (e.g. BE) drop the "Note" word and just number the entries.
+            if stype == "TitleElement" and re.match(
+                r"(note\s*)?\d+\s*[.\-–—:)]", node_text, re.IGNORECASE
+            ):
+                key = re.sub(r"[^a-z0-9]+", "_", node_text.lower()).strip("_")
+                if len(key) > 60:
+                    key = key[:60]
+                extracted[key] = _collect_node_text(node)
 
-            # Recurse into children
             if hasattr(node, "children") and node.children:
                 _scan_for_notes(node.children)
 
@@ -333,10 +309,10 @@ def extract_sections_secparser(html: str, form_type: str) -> dict:
             logger.warning(f"Failed to extract {section_key} via sec-parser: {e}")
             sections[section_key] = None
 
-    # Extract crucial financial notes
+    # Extract all numbered financial notes
     try:
-        crucial_notes = _extract_crucial_notes_from_tree(tree)
-        sections["financial_notes"] = crucial_notes if crucial_notes else None
+        notes = _extract_all_notes_from_tree(tree)
+        sections["financial_notes"] = notes if notes else None
     except Exception as e:
         logger.warning(f"Failed to extract financial_notes via sec-parser: {e}")
         sections["financial_notes"] = None
@@ -557,4 +533,4 @@ if __name__ == "__main__":
     print(f"sec-parser available: {HAS_SEC_PARSER}")
     print(f"Target sections (10-K): {list(SECTION_LOOKUP_10K.keys())} + financial_notes")
     print(f"Target sections (10-Q): {list(SECTION_LOOKUP_10Q.keys())} + financial_notes")
-    print(f"Crucial note titles tracked: {len(CRUCIAL_NOTE_TITLES)}")
+    print("Financial notes: extracting all numbered notes")
