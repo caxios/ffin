@@ -1,0 +1,14 @@
+# 10-q rss latest로 가져오는 링크
+https://www.sec.gov/cgi-bin/browse-edgar?company=&CIK=&type=10-q&owner=include&count=40&action=getcurrent
+
+
+# company filing rss(개별 기업)
+https://data.sec.gov/rss?cik=0000789019&type=3,4,5&exclude=true&count=40
+> category에 term에 10-q, 10-k 이런 식으로 파일 타입이 있음
+> filing-href에 해당 파일에 대한 링크가 있음 (https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/0000950170-25-100235-index.htm)
+이걸 끝에 -index.htm 지우고 .txt 로 하면 raw 데이터 나옴
+
+# 개별 기업의 rss인데 10-q, 10-k 만 있음 
+https://data.sec.gov/rss?cik=0000789019&type=10-K,10-Q,10-KT,10-QT,NT%2010-K,NT%2010-Q,NTN%2010K,NTN%2010Q&count=40
+> 개별 파일 접속은 위와 동일
+

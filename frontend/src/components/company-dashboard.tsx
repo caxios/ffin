@@ -61,10 +61,10 @@ const fmtUsd = (v: number | null | undefined) =>
   v == null
     ? "—"
     : v.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
-      });
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    });
 
 const fmtNum = (v: number | null | undefined) =>
   v == null ? "—" : Math.round(v).toLocaleString("en-US");
@@ -73,11 +73,11 @@ const fmtPrice = (v: number | null | undefined) =>
   v == null
     ? "—"
     : v.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
 const LIMIT_OPTIONS = [
   { value: "4", label: "Last 4" },
@@ -166,22 +166,48 @@ function FilingsCard({
   onLimitChange: (v: string) => void;
   isFetching: boolean;
 }) {
-  const exportCsv = () => {
-    downloadCsv(
-      filings.map((f) => ({
-        accession_number: f.accession_number,
-        form_type: f.form_type,
-        filing_date: f.filing_date,
-        company_name: f.company_name ?? "",
-        document_url: f.document_url ?? "",
-        has_business: f.has_business,
-        has_risk_factors: f.has_risk_factors,
-        has_mda: f.has_mda,
-      })),
-      `${ticker}_filings_10kq.csv`,
-    );
-  };
+  // const exportCsv = () => {
+  //   downloadCsv(
+  //     filings.map((f) => ({
+  //       accession_number: f.accession_number,
+  //       form_type: f.form_type,
+  //       filing_date: f.filing_date,
+  //       company_name: f.company_name ?? "",
+  //       document_url: f.document_url ?? "",
+  //       has_business: f.has_business,
+  //       has_risk_factors: f.has_risk_factors,
+  //       has_mda: f.has_mda,
+  //     })),
+  //     `${ticker}_filings_10kq.csv`,
+  //   );
+  // };
+  // 개별 공시의 PDF를 다운받는 함수
+  const downloadPdf = async (formType: string, documentUrl: string | null) => {
+    if (!documentUrl) {
+      alert("다운로드할 원본 링크가 없습니다.");
+      return;
+    }
 
+    try {
+      const response = await fetch(`/api/download-pdf?url=${encodeURIComponent(documentUrl)}`);
+
+      if (!response.ok) throw new Error("PDF 생성 실패");
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `${ticker}_${formType}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+    } catch (error) {
+      console.error("PDF 다운로드 중 에러 발생:", error);
+      alert("PDF 다운로드에 실패했습니다.");
+    }
+  };
   return (
     <Card className="border-glass-border bg-glass backdrop-blur-sm">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -206,16 +232,6 @@ function FilingsCard({
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportCsv}
-            disabled={filings.length === 0}
-            className="h-8 text-xs"
-          >
-            <Download className="h-3 w-3" />
-            CSV
-          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -228,6 +244,7 @@ function FilingsCard({
                   <TableHead>Filed</TableHead>
                   <TableHead>Sections</TableHead>
                   <TableHead className="text-right">Source</TableHead>
+                  <TableHead className="text-right">Download</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -253,6 +270,22 @@ function FilingsCard({
                         >
                           <FileText className="h-3 w-3" /> SEC
                         </a>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {f.document_url ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadPdf(f.form_type, f.document_url)}
+                          disabled={filings.length === 0}
+                          className="h-8 text-xs"
+                        >
+                          <Download className="h-3 w-3" />
+                          PDF
+                        </Button>
                       ) : (
                         "—"
                       )}
@@ -291,6 +324,9 @@ function TradesCard({
         price_per_share: t.price_per_share ?? "",
         transaction_value: t.transaction_value ?? "",
         shares_owned_after: t.shares_owned_after ?? "",
+        ratio: t.trade_ratio_pct ?? "",
+        market_value_after: t.market_value_after ?? "",
+        // market_cap: t.market_cap ?? "",
         source_url: t.source_url ?? "",
       })),
       `${ticker}_form4_trades.csv`,
@@ -330,7 +366,8 @@ function TradesCard({
                   <TableHead>Code</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">Transaction Val</TableHead>
+                  <TableHead className="text-right">Market Val After</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -368,12 +405,15 @@ function TradesCard({
                         {fmtPrice(t.price_per_share)}
                       </TableCell>
                       <TableCell
-                        className={`text-right font-mono text-xs ${
-                          isBuy ? "text-accent-green" : "text-accent-red"
-                        }`}
+                        className={`text-right font-mono text-xs ${isBuy ? "text-accent-green" : "text-accent-red"
+                          }`}
                       >
                         {fmtUsd(t.transaction_value)}
                       </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {fmtPrice(t.market_value_after)}
+                      </TableCell>
+
                     </TableRow>
                   );
                 })}

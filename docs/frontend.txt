@@ -1,2 +1,0 @@
-# company-dashboard
-> 특정 기업의 ticker를 검색하면 나오는 페이지.

@@ -67,7 +67,7 @@ def fetch_filing_list(cik: str, form_types: str = "10-K,10-Q", count: int = 10) 
             continue
 
         # --- Filing date ---
-        updated = entry.find("updated")
+        updated = entry.find("filing-date")
         filing_date = updated.text[:10] if updated and updated.text else ""
 
         # --- Title ---

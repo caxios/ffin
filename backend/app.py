@@ -14,7 +14,7 @@ import sqlite3
 import uuid
 from typing import Optional
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -31,7 +31,7 @@ from company_data import (
     get_company_data,
 )
 from company_facts.company_specific_fin import fetch_and_save as fetch_and_save_company_facts
-
+from playwright.async_api import async_playwright
 
 # ---------------------------------------------------------------------------
 # Config
@@ -550,5 +550,19 @@ def chat_reset(session_id: str = Query(..., description="Session id to clear")):
     """Drop the memory buffer for a single conversation thread."""
     cio_reset(session_id)
     return {"status": "ok", "session_id": session_id}
+
+@app.get("/api/download-pdf")
+async def generate_pdf(url: str):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        # 1. SEC 페이지 접속
+        await page.goto(url)
+        # 2. 물리적 저장이 아닌, 메모리 상의 바이트(Bytes)로 PDF 구워내기
+        pdf_bytes = await page.pdf(format="A4") 
+        await browser.close()
+        # 3. DB에 저장하지 않고 생성된 바이트를 유저에게 그대로 전송!
+        return Response(content=pdf_bytes, media_type="application/pdf")
+
 
 

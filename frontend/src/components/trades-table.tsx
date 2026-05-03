@@ -15,20 +15,20 @@ const usd = (v: number | null | undefined) =>
   v == null
     ? "—"
     : v.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
 const usdCompact = (v: number | null | undefined) =>
   v == null
     ? "—"
     : v.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
-      });
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    });
 
 const num = (v: number | null | undefined) =>
   v == null ? "—" : Math.round(v).toLocaleString("en-US");
@@ -106,6 +106,7 @@ export function TradesTable({ filters, onPage }: Props) {
               <th className={`${HEAD_CLASS} text-right`}>Amount</th>
               <th className={HEAD_CLASS}>Dir</th>
               <th className={`${HEAD_CLASS} text-right`}>Price</th>
+              <th className={`${HEAD_CLASS} text-right`}>Transaction Val</th>
               <th className={`${HEAD_CLASS} text-right`}>Shares After</th>
               <th className={`${HEAD_CLASS} text-right`}>Ratio</th>
               <th className={`${HEAD_CLASS} text-right`}>Market Val After</th>
@@ -124,9 +125,8 @@ export function TradesTable({ filters, onPage }: Props) {
                       ? () => window.open(filingUrl, "_blank", "noopener,noreferrer")
                       : undefined
                   }
-                  className={`transition-colors hover:bg-foreground/5 ${
-                    filingUrl ? "cursor-pointer" : ""
-                  }`}
+                  className={`transition-colors hover:bg-foreground/5 ${filingUrl ? "cursor-pointer" : ""
+                    }`}
                 >
                   <td className={`${CELL_CLASS} font-mono text-xs`}>
                     {t.transaction_date ?? "—"}
@@ -171,15 +171,17 @@ export function TradesTable({ filters, onPage }: Props) {
                     {usd(t.price_per_share)}
                   </td>
                   <td className={`${CELL_CLASS} text-right font-mono`}>
+                    {usd(t.transaction_value)}
+                  </td>
+                  <td className={`${CELL_CLASS} text-right font-mono`}>
                     {num(t.shares_owned_after)}
                   </td>
                   <td className={`${CELL_CLASS} text-right font-mono`}>
                     {pct(t.trade_ratio_pct)}
                   </td>
                   <td
-                    className={`${CELL_CLASS} text-right font-mono ${
-                      isBuy ? "text-accent-green" : "text-accent-red"
-                    }`}
+                    className={`${CELL_CLASS} text-right font-mono ${isBuy ? "text-accent-green" : "text-accent-red"
+                      }`}
                   >
                     {usdCompact(t.market_value_after)}
                   </td>
