@@ -1,2 +1,5 @@
-# company-dashboard
+# company-dashboard.tsx
 > 특정 기업의 ticker를 검색하면 나오는 페이지.
+
+# financial-data.tsx
+> 기업 재무정보를 가져오기 위한 파일

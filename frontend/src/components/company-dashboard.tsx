@@ -22,6 +22,7 @@ import { downloadCsv, downloadText } from "@/lib/export";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -181,31 +182,40 @@ function FilingsCard({
   //     `${ticker}_filings_10kq.csv`,
   //   );
   // };
+  const [downloadingAccn, setDownloadingAccn] = useState<string | null>(null);
+
   // 개별 공시의 PDF를 다운받는 함수
-  const downloadPdf = async (formType: string, documentUrl: string | null) => {
+  const downloadPdf = async (
+    accessionNumber: string,
+    formType: string,
+    documentUrl: string | null,
+  ) => {
     if (!documentUrl) {
       alert("다운로드할 원본 링크가 없습니다.");
       return;
     }
 
+    setDownloadingAccn(accessionNumber);
     try {
-      const response = await fetch(`/api/download-pdf?url=${encodeURIComponent(documentUrl)}`);
-
-      if (!response.ok) throw new Error("PDF 생성 실패");
+      const response = await fetch(
+        `${API_BASE}/api/download-pdf?url=${encodeURIComponent(documentUrl)}`,
+      );
+      if (!response.ok) throw new Error(`PDF 생성 실패 (${response.status})`);
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = downloadUrl;
       link.download = `${ticker}_${formType}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
-
     } catch (error) {
       console.error("PDF 다운로드 중 에러 발생:", error);
       alert("PDF 다운로드에 실패했습니다.");
+    } finally {
+      setDownloadingAccn(null);
     }
   };
   return (
@@ -279,11 +289,15 @@ function FilingsCard({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => downloadPdf(f.form_type, f.document_url)}
-                          disabled={filings.length === 0}
+                          onClick={() => downloadPdf(f.accession_number, f.form_type, f.document_url)}
+                          disabled={downloadingAccn !== null}
                           className="h-8 text-xs"
                         >
-                          <Download className="h-3 w-3" />
+                          {downloadingAccn === f.accession_number ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="h-3 w-3" />
+                          )}
                           PDF
                         </Button>
                       ) : (
@@ -304,9 +318,15 @@ function FilingsCard({
 function TradesCard({
   ticker,
   trades,
+  limit,
+  onLimitChange,
+  isFetching,
 }: {
   ticker: string;
   trades: CompanyDataTrade[];
+  limit: string;
+  onLimitChange: (v: string) => void;
+  isFetching: boolean;
 }) {
   const exportCsv = () => {
     downloadCsv(
@@ -344,16 +364,27 @@ function TradesCard({
               : `${trades.length} most-recent transaction${trades.length === 1 ? "" : "s"}.`}
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={exportCsv}
-          disabled={trades.length === 0}
-          className="h-8 text-xs"
-        >
-          <Download className="h-3 w-3" />
-          CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={1}
+            value={limit}
+            onChange={(e) => onLimitChange(e.target.value)}
+            disabled={isFetching}
+            className="h-8 w-[100px] text-xs"
+            placeholder="Count"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCsv}
+            disabled={trades.length === 0}
+            className="h-8 text-xs"
+          >
+            <Download className="h-3 w-3" />
+            CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {trades.length === 0 ? null : (
@@ -602,9 +633,10 @@ function SectionItem({
 
 export function CompanyDashboard({ ticker }: { ticker: string }) {
   const [limit, setLimit] = useState<string>("4");
+  const [tradesLimit, setTradesLimit] = useState<string>("30");
 
   const { data, error, isLoading, isValidating } = useSWR<CompanyDataResponse>(
-    `${API_BASE}/api/company-data/${encodeURIComponent(ticker)}?limit=${limit}`,
+    `${API_BASE}/api/company-data/${encodeURIComponent(ticker)}?limit=${limit}&limit_form4=${tradesLimit || 30}`,
     fetcher,
     { revalidateOnFocus: false, shouldRetryOnError: false, keepPreviousData: true },
   );
@@ -650,7 +682,13 @@ export function CompanyDashboard({ ticker }: { ticker: string }) {
                 onLimitChange={setLimit}
                 isFetching={isValidating}
               />
-              <TradesCard ticker={ticker} trades={data.form4_trades} />
+              <TradesCard
+                ticker={ticker}
+                trades={data.form4_trades}
+                limit={tradesLimit}
+                onLimitChange={setTradesLimit}
+                isFetching={isValidating}
+              />
             </div>
           </TabsContent>
 

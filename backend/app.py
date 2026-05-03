@@ -8,7 +8,8 @@ Serves insider trade data from two SQLite databases:
 Run:
     uvicorn app:app --reload --port 8000
 """
-
+import sys
+import asyncio
 import os
 import sqlite3
 import uuid
@@ -31,7 +32,8 @@ from company_data import (
     get_company_data,
 )
 from company_facts.company_specific_fin import fetch_and_save as fetch_and_save_company_facts
-from playwright.async_api import async_playwright
+# from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 # ---------------------------------------------------------------------------
 # Config
@@ -50,6 +52,10 @@ COMPANY_FACTS_DB = os.path.join(BASE_DIR, "db", "company_facts.db")
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+
+# [에러 해결 핵심 코드] 윈도우 환경일 경우 Proactor 이벤트 루프 정책을 강제로 설정합니다.
+if sys.platform == "win32" or "win64":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title="Insider Trading Tracker API")
 
@@ -477,6 +483,12 @@ def get_company_data_endpoint(
         le=1000,
         description="How many 10-K/10-Q filings to return. If the DB has fewer than this, missing filings are scraped from SEC.",
     ),
+    limit_form4: int = Query(
+        30,
+        ge=1,
+        le=1000,
+        description="How many Form 4 insider trades to return.",
+    ),
 ):
     """
     Return Form 4 + 10-K/10-Q data for `ticker`.
@@ -493,7 +505,7 @@ def get_company_data_endpoint(
       502 — other upstream/parse failure
     """
     try:
-        return get_company_data(ticker, limit_10kq=limit)
+        return get_company_data(ticker, limit_10kq=limit, limit_form4=limit_form4)
     except TickerNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     except SECRateLimit as e:
@@ -552,15 +564,33 @@ def chat_reset(session_id: str = Query(..., description="Session id to clear")):
     return {"status": "ok", "session_id": session_id}
 
 @app.get("/api/download-pdf")
-async def generate_pdf(url: str):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+def generate_pdf(url: str):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        # [핵심 해결책] SEC가 요구하는 규격의 명찰(User-Agent)을 달고 새 창을 엽니다.
+        # [수정 포인트 1] 괄호와 기호를 모두 뺀 가장 안전하고 단순한 포맷
+        sec_user_agent = "DK mrsimple@gmail.com"
+        
+        context = browser.new_context(
+            user_agent=sec_user_agent,
+            extra_http_headers={
+                "User-Agent": sec_user_agent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1"
+            }
+        )
+        # browser가 아닌 context에서 페이지를 생성해야 명찰이 적용됩니다.
+        page = context.new_page()
         # 1. SEC 페이지 접속
-        await page.goto(url)
+        page.goto(url)
+        # [수정 포인트 3] SEC 방화벽이 페이지를 렌더링하고 차단을 풀 시간을 주기 위한 1.5초 대기
+        page.wait_for_timeout(1500)
         # 2. 물리적 저장이 아닌, 메모리 상의 바이트(Bytes)로 PDF 구워내기
-        pdf_bytes = await page.pdf(format="A4") 
-        await browser.close()
+        pdf_bytes = page.pdf(format="A4") 
+        browser.close()
         # 3. DB에 저장하지 않고 생성된 바이트를 유저에게 그대로 전송!
         return Response(content=pdf_bytes, media_type="application/pdf")
 

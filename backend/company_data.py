@@ -284,6 +284,7 @@ def _scrape_form4(cik: str) -> int:
 def get_company_data(
     ticker: str,
     limit_10kq: int = DEFAULT_LIMIT_10KQ,
+    limit_form4: int = RETURN_LIMIT_FORM4,
 ) -> dict[str, Any]:
     """
     Resolve ticker → CIK, then return cached 10-K/10-Q + Form 4 data.
@@ -331,6 +332,6 @@ def get_company_data(
         "company_name": company_name,
         "cache_status": cache_status,
         "filings_10kq": _select_10kq_rows(cik, limit=limit_10kq),
-        "form4_trades": _select_form4_rows(ticker, cik),
+        "form4_trades": _select_form4_rows(ticker, cik, limit=limit_form4),
         "fetched_at": _now_iso(),
     }
