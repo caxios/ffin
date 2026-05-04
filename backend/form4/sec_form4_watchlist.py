@@ -67,7 +67,7 @@ def fetch_filings(cik, count=FILINGS_PER_COMPANY):
 # Main: fetch per-company filings, then parse with form4_parser
 # ============================================================
 
-def parse_all_from_watchlist(delay=REQUEST_DELAY, count=FILINGS_PER_COMPANY):
+def parse_all_form4_from_watchlist(delay=REQUEST_DELAY, count=FILINGS_PER_COMPANY):
     """
     Watchlist의 각 종목에 대해 최근 Form 4 filing을 가져오고,
     form4_parser.parse_form4()로 파싱합니다.
