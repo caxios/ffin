@@ -1,5 +1,5 @@
 import { Navbar } from "@/components/navbar";
-import { CompanyDashboard } from "@/components/company-dashboard";
+import { CompanyDashboard } from "@/app/dashboard/_components/company-dashboard";
 
 export default async function TickerDashboardPage({
   params,

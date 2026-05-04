@@ -26,7 +26,7 @@ export const fetcher = async (url: string) => {
   return res.json();
 };
 
-export type Trade = {
+export interface Trade {
   id: number;
   ticker: string;
   issuer_name: string | null;
@@ -44,16 +44,16 @@ export type Trade = {
   market_value_after: number | null;
   market_cap: number | null;
   source_url: string | null;
-};
+}
 
-export type TradesResponse = {
+export interface TradesResponse {
   total: number;
   limit: number;
   offset: number;
   trades: Trade[];
-};
+}
 
-export type SummaryRow = {
+export interface SummaryRow {
   ticker: string;
   total_trades: number;
   total_buys: number;
@@ -62,9 +62,9 @@ export type SummaryRow = {
   total_sell_value: number;
   latest_trade_date: string | null;
   unique_insiders: number;
-};
+}
 
-export type Filters = {
+export interface Filters {
   source: "watchlist" | "all";
   ticker?: string;
   owner?: string;
@@ -75,10 +75,10 @@ export type Filters = {
   min_value?: string;
   limit: number;
   offset: number;
-};
+}
 
-export type ChatRequest = { user_message: string; session_id?: string };
-export type ChatResponse = { session_id: string; reply?: string; response?: string };
+export interface ChatRequest { user_message: string; session_id?: string }
+export interface ChatResponse { session_id: string; reply?: string; response?: string }
 
 export const sendChat = async (
   body: ChatRequest,
@@ -97,7 +97,7 @@ export const sendChat = async (
   return res.json();
 };
 
-export type CompanyDataFiling = {
+export interface CompanyDataFiling {
   accession_number: string;
   form_type: string;
   filing_date: string;
@@ -107,9 +107,9 @@ export type CompanyDataFiling = {
   has_business: boolean;
   has_risk_factors: boolean;
   has_mda: boolean;
-};
+}
 
-export type CompanyDataTrade = {
+export interface CompanyDataTrade {
   owner_name: string;
   officer_title: string | null;
   is_director: string | null;
@@ -127,9 +127,9 @@ export type CompanyDataTrade = {
   transaction_value: number | null;
   market_value_after: number | null;
   source_url: string | null;
-};
+}
 
-export type CompanyDataResponse = {
+export interface CompanyDataResponse {
   ticker: string;
   cik: string;
   company_name: string | null;
@@ -137,7 +137,7 @@ export type CompanyDataResponse = {
   filings_10kq: CompanyDataFiling[];
   form4_trades: CompanyDataTrade[];
   fetched_at: string;
-};
+}
 
 export const buildTradesUrl = (f: Filters) => {
   const qs = new URLSearchParams();
